@@ -230,6 +230,7 @@ class YoLov5TRT(object):
             result_boxes, result_scores, result_classid = self.post_process(
                 output[i * 6001: (i + 1) * 6001], batch_origin_h[i], batch_origin_w[i]
             )
+            print('result_boxes', result_boxes.shape)
             # Draw rectangles and labels on the original image
             for j in range(len(result_boxes)):
                 box = result_boxes[j]
@@ -289,4 +290,4 @@ if __name__ == "__main__":
         print('input_w ', yolov5_wrapper.engine.get_binding_shape(binding)[-1])
         print('input_h ', yolov5_wrapper.engine.get_binding_shape(binding)[-2])
 
-    print("host_outputs ", yolov5_wrapper.host_outputs[0])
+    print("host_outputs ", yolov5_wrapper.host_outputs[0].shape)
