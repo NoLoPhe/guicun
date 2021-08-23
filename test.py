@@ -69,6 +69,54 @@ class YoLov5TRT(object):
         self.bindings = bindings
         self.batch_size = engine.max_batch_size
 
+    def preprocess_image(self, raw_bgr_image):
+        """
+        description: Convert BGR image to RGB,
+                     resize and pad it to target size, normalize to [0,1],
+                     transform to NCHW format.
+        param:
+            input_image_path: str, image path
+        return:
+            image:  the processed image
+            image_raw: the original image
+            h: original height
+            w: original width
+        """
+        image_raw = raw_bgr_image
+        h, w, c = image_raw.shape
+        image = cv2.cvtColor(image_raw, cv2.COLOR_BGR2RGB)
+        # Calculate widht and height and paddings
+        r_w = self.input_w / w
+        r_h = self.input_h / h
+        if r_h > r_w:
+            tw = self.input_w
+            th = int(r_w * h)
+            tx1 = tx2 = 0
+            ty1 = int((self.input_h - th) / 2)
+            ty2 = self.input_h - th - ty1
+        else:
+            tw = int(r_h * w)
+            th = self.input_h
+            tx1 = int((self.input_w - tw) / 2)
+            tx2 = self.input_w - tw - tx1
+            ty1 = ty2 = 0
+        # Resize the image with long side while maintaining ratio
+        image = cv2.resize(image, (tw, th))
+        # Pad the short side with (128,128,128)
+        image = cv2.copyMakeBorder(
+            image, ty1, ty2, tx1, tx2, cv2.BORDER_CONSTANT, (128, 128, 128)
+        )
+        image = image.astype(np.float32)
+        # Normalize to [0,1]
+        image /= 255.0
+        # HWC to CHW format:
+        image = np.transpose(image, [2, 0, 1])
+        # CHW to NCHW format
+        image = np.expand_dims(image, axis=0)
+        # Convert the image to row-major order, also known as "C order":
+        image = np.ascontiguousarray(image)
+        return image, image_raw, h, w
+
     def infer(self, raw_image_generator):
         threading.Thread.__init__(self)
         # Make self the active context, pushing it on top of the context stack.
