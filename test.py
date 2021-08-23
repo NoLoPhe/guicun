@@ -214,7 +214,7 @@ if __name__ == "__main__":
     yolov5_wrapper = YoLov5TRT(engine_file_path)
 
     print("batch_size ", yolov5_wrapper.batch_size)
-    print("get_raw_image_zeros", yolov5_wrapper.get_raw_image_zeros())
+#     print("get_raw_image_zeros", yolov5_wrapper.get_raw_image_zeros())
 
     batch_image_raw, use_time = yolov5_wrapper.infer(yolov5_wrapper.get_raw_image_zeros())
     print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
