@@ -69,6 +69,72 @@ class YoLov5TRT(object):
         self.bindings = bindings
         self.batch_size = engine.max_batch_size
 
+    def xywh2xyxy(self, origin_h, origin_w, x):
+        """
+        description:    Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
+        param:
+            origin_h:   height of original image
+            origin_w:   width of original image
+            x:          A boxes tensor, each row is a box [center_x, center_y, w, h]
+        return:
+            y:          A boxes tensor, each row is a box [x1, y1, x2, y2]
+        """
+        y = torch.zeros_like(x) if isinstance(x, torch.Tensor) else np.zeros_like(x)
+        r_w = self.input_w / origin_w
+        r_h = self.input_h / origin_h
+        if r_h > r_w:
+            y[:, 0] = x[:, 0] - x[:, 2] / 2
+            y[:, 2] = x[:, 0] + x[:, 2] / 2
+            y[:, 1] = x[:, 1] - x[:, 3] / 2 - (self.input_h - r_w * origin_h) / 2
+            y[:, 3] = x[:, 1] + x[:, 3] / 2 - (self.input_h - r_w * origin_h) / 2
+            y /= r_w
+        else:
+            y[:, 0] = x[:, 0] - x[:, 2] / 2 - (self.input_w - r_h * origin_w) / 2
+            y[:, 2] = x[:, 0] + x[:, 2] / 2 - (self.input_w - r_h * origin_w) / 2
+            y[:, 1] = x[:, 1] - x[:, 3] / 2
+            y[:, 3] = x[:, 1] + x[:, 3] / 2
+            y /= r_h
+
+        return y
+
+    def post_process(self, output, origin_h, origin_w):
+        """
+        description: postprocess the prediction
+        param:
+            output:     A tensor likes [num_boxes,cx,cy,w,h,conf,cls_id, cx,cy,w,h,conf,cls_id, ...] 
+            origin_h:   height of original image
+            origin_w:   width of original image
+        return:
+            result_boxes: finally boxes, a boxes tensor, each row is a box [x1, y1, x2, y2]
+            result_scores: finally scores, a tensor, each element is the score correspoing to box
+            result_classid: finally classid, a tensor, each element is the classid correspoing to box
+        """
+        # Get the num of boxes detected
+        num = int(output[0])
+        # Reshape to a two dimentional ndarray
+        pred = np.reshape(output[1:], (-1, 6))[:num, :]
+        # to a torch Tensor
+        pred = torch.Tensor(pred).cuda()
+        # Get the boxes
+        boxes = pred[:, :4]
+        # Get the scores
+        scores = pred[:, 4]
+        # Get the classid
+        classid = pred[:, 5]
+        # Choose those boxes that score > CONF_THRESH
+        si = scores > CONF_THRESH
+        boxes = boxes[si, :]
+        scores = scores[si]
+        classid = classid[si]
+        # Trandform bbox from [center_x, center_y, w, h] to [x1, y1, x2, y2]
+        boxes = self.xywh2xyxy(origin_h, origin_w, boxes)
+        # Do nms
+        indices = torchvision.ops.nms(boxes, scores, iou_threshold=IOU_THRESHOLD).cpu()
+        result_boxes = boxes[indices, :].cpu()
+        result_scores = scores[indices].cpu()
+        result_classid = classid[indices].cpu()
+        return result_boxes, result_scores, result_classid
+
     def preprocess_image(self, raw_bgr_image):
         """
         description: Convert BGR image to RGB,
@@ -214,7 +280,7 @@ if __name__ == "__main__":
     yolov5_wrapper = YoLov5TRT(engine_file_path)
 
     print("batch_size ", yolov5_wrapper.batch_size)
-#     print("get_raw_image_zeros", yolov5_wrapper.get_raw_image_zeros())
+    # print("get_raw_image_zeros", yolov5_wrapper.get_raw_image_zeros())
 
     batch_image_raw, use_time = yolov5_wrapper.infer(yolov5_wrapper.get_raw_image_zeros())
     print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
