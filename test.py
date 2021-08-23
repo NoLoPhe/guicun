@@ -69,6 +69,13 @@ class YoLov5TRT(object):
         self.bindings = bindings
         self.batch_size = engine.max_batch_size
 
+    def get_raw_image_zeros(self, image_path_batch=None):
+        """
+        description: Ready data for warmup
+        """
+        for _ in range(self.batch_size):
+            yield np.zeros([self.input_h, self.input_w, 3], dtype=np.uint8)
+
 if __name__ == "__main__":
     # load custom plugins
     PLUGIN_LIBRARY = "build/libmyplugins.so"
@@ -100,3 +107,4 @@ if __name__ == "__main__":
     yolov5_wrapper = YoLov5TRT(engine_file_path)
 
     print("batch_size ", yolov5_wrapper.batch_size)
+    print("get_raw_image_zeros", yolov5_wrapper.get_raw_image_zeros())
