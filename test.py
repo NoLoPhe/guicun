@@ -334,20 +334,21 @@ if __name__ == "__main__":
 
     yolov5_wrapper = YoLov5TRT(engine_file_path)
 
-    try:
-        print('batch size is', yolov5_wrapper.batch_size)
-        
-        image_dir = "samples/"
-        image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
+#     try:
 
-        for i in range(10):
-            # create a new thread to do warm_up
-            warmUp_ = warmUp(yolov5_wrapper)
+    print('batch size is', yolov5_wrapper.batch_size)
+
+    image_dir = "samples/"
+    image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
+
+    for i in range(10):
+        # create a new thread to do warm_up
+        warmUp_ = warmUp(yolov5_wrapper)
 
         # for batch in image_path_batches:
         #     # create a new thread to do inference
         #     infer_ = inferThread(yolov5_wrapper, batch)
 
-    finally:
-        # destroy the instance
-        yolov5_wrapper.destroy()
+#     finally:
+#         # destroy the instance
+#         yolov5_wrapper.destroy()
