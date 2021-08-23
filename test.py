@@ -69,6 +69,65 @@ class YoLov5TRT(object):
         self.bindings = bindings
         self.batch_size = engine.max_batch_size
 
+    def infer(self, raw_image_generator):
+        threading.Thread.__init__(self)
+        # Make self the active context, pushing it on top of the context stack.
+        self.ctx.push()
+        # Restore
+        stream = self.stream
+        context = self.context
+        engine = self.engine
+        host_inputs = self.host_inputs
+        cuda_inputs = self.cuda_inputs
+        host_outputs = self.host_outputs
+        cuda_outputs = self.cuda_outputs
+        bindings = self.bindings
+        # Do image preprocess
+        batch_image_raw = []
+        batch_origin_h = []
+        batch_origin_w = []
+        batch_input_image = np.empty(shape=[self.batch_size, 3, self.input_h, self.input_w])
+        for i, image_raw in enumerate(raw_image_generator):
+            input_image, image_raw, origin_h, origin_w = self.preprocess_image(image_raw)
+            batch_image_raw.append(image_raw)
+            batch_origin_h.append(origin_h)
+            batch_origin_w.append(origin_w)
+            np.copyto(batch_input_image[i], input_image)
+        batch_input_image = np.ascontiguousarray(batch_input_image)
+
+        # Copy input image to host buffer
+        np.copyto(host_inputs[0], batch_input_image.ravel())
+        start = time.time()
+        # Transfer input data  to the GPU.
+        cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
+        # Run inference.
+        context.execute_async(batch_size=self.batch_size, bindings=bindings, stream_handle=stream.handle)
+        # Transfer predictions back from the GPU.
+        cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
+        # Synchronize the stream
+        stream.synchronize()
+        end = time.time()
+        # Remove any context from the top of the context stack, deactivating it.
+        self.ctx.pop()
+        # Here we use the first row of output in that batch_size = 1
+        output = host_outputs[0]
+        # Do postprocess
+        for i in range(self.batch_size):
+            result_boxes, result_scores, result_classid = self.post_process(
+                output[i * 6001: (i + 1) * 6001], batch_origin_h[i], batch_origin_w[i]
+            )
+            # Draw rectangles and labels on the original image
+            for j in range(len(result_boxes)):
+                box = result_boxes[j]
+                plot_one_box(
+                    box,
+                    batch_image_raw[i],
+                    label="{}:{:.2f}".format(
+                        categories[int(result_classid[j])], result_scores[j]
+                    ),
+                )
+        return batch_image_raw, end - start
+
     def get_raw_image_zeros(self, image_path_batch=None):
         """
         description: Ready data for warmup
@@ -108,3 +167,6 @@ if __name__ == "__main__":
 
     print("batch_size ", yolov5_wrapper.batch_size)
     print("get_raw_image_zeros", yolov5_wrapper.get_raw_image_zeros())
+
+    batch_image_raw, use_time = yolov5_wrapper.infer(yolov5_wrapper.get_raw_image_zeros())
+    print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
