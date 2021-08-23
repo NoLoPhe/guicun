@@ -284,3 +284,9 @@ if __name__ == "__main__":
 
     batch_image_raw, use_time = yolov5_wrapper.infer(yolov5_wrapper.get_raw_image_zeros())
     print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
+
+    for binding in yolov5_wrapper.engine:
+        print('input_w ', yolov5_wrapper.engine.get_binding_shape(binding)[-1])
+        print('input_h ', yolov5_wrapper.engine.get_binding_shape(binding)[-2])
+
+    print("host_outputs ", yolov5_wrapper.host_outputs[0])
