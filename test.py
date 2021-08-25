@@ -15,10 +15,6 @@ import tensorrt as trt
 import torch
 import torchvision
 
-CONF_THRESH = 0.5
-IOU_THRESHOLD = 0.4
-
-
 def get_img_path_batches(batch_size, img_dir):
     ret = []
     batch = []
@@ -76,7 +72,7 @@ class YoLov5TRT(object):
 
     def __init__(self, engine_file_path):
         # Create a Context on this device,
-        self.ctx = cuda.Device(0).make_context()
+        # self.ctx = cuda.Device(0).make_context()
         stream = cuda.Stream()
         TRT_LOGGER = trt.Logger(trt.Logger.INFO)
         runtime = trt.Runtime(TRT_LOGGER)
@@ -122,9 +118,10 @@ class YoLov5TRT(object):
         self.bindings = bindings
         self.batch_size = engine.max_batch_size
 
+
     def infer(self, raw_image_generator):
         # Make self the active context, pushing it on top of the context stack.
-        self.ctx.push()
+        # self.ctx.push()
         # Restore
         stream = self.stream
         context = self.context
@@ -160,7 +157,7 @@ class YoLov5TRT(object):
         stream.synchronize()
         end = time.time()
         # Remove any context from the top of the context stack, deactivating it.
-        self.ctx.pop()
+        # self.ctx.pop()
         # Here we use the first row of output in that batch_size = 1
         output = host_outputs[0]
         # Do postprocess
@@ -180,17 +177,13 @@ class YoLov5TRT(object):
                 )
         return batch_image_raw, end - start
 
-    def destroy(self):
-        # Remove any context from the top of the context stack, deactivating it.
-        self.ctx.pop()
-        
     def get_raw_image(self, image_path_batch):
         """
         description: Read an image from image path
         """
         for img_path in image_path_batch:
             yield cv2.imread(img_path)
-        
+
     def get_raw_image_zeros(self, image_path_batch=None):
         """
         description: Ready data for warmup
@@ -310,15 +303,14 @@ class YoLov5TRT(object):
         result_boxes = boxes[indices, :].cpu()
         result_scores = scores[indices].cpu()
         result_classid = classid[indices].cpu()
-        return result_boxes, result_scores, result_classid
-
+        return result_boxes, result_scores, result_classid                            
 
 class inferThread(object):
     def __init__(self, yolov5_wrapper, image_path_batch):
         self.yolov5_wrapper = yolov5_wrapper
         self.image_path_batch = image_path_batch
 
-    def run(self):
+    def run_(self):
         batch_image_raw, use_time = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image(self.image_path_batch))
         for i, img_path in enumerate(self.image_path_batch):
             parent, filename = os.path.split(img_path)
@@ -327,18 +319,11 @@ class inferThread(object):
             cv2.imwrite(save_name, batch_image_raw[i])
         print('input->{}, time->{:.2f}ms, saving into output/'.format(self.image_path_batch, use_time * 1000))
 
-
-class warmUpThread(object):
-    def __init__(self, yolov5_wrapper):
-        self.yolov5_wrapper = yolov5_wrapper
-
-    def run(self):
-        batch_image_raw, use_time = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image_zeros())
-        print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
-
-
-
 if __name__ == "__main__":
+
+    CONF_THRESH = 0.5
+    IOU_THRESHOLD = 0.4
+
     # load custom plugins
     PLUGIN_LIBRARY = "build/libmyplugins.so"
     engine_file_path = "build/yolov5s.engine"
@@ -367,29 +352,12 @@ if __name__ == "__main__":
     os.makedirs('output/')
     # a YoLov5TRT instance
     yolov5_wrapper = YoLov5TRT(engine_file_path)
-#     try:
+
     print('batch size is', yolov5_wrapper.batch_size)
 
     image_dir = "samples/"
     image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
-    
-    start_time = time.time()
-        
-    for i in range(10):
-        use_time = time.time() - start_time
-        start_time = time.time()
-        # create a new thread to do warm_up
-        warmUpThread(yolov5_wrapper).run()
-        print('input->{}, time->{:.2f}ms, saving into output/'.format(i, use_time * 1000))
-        
-    start_time = time.time()
 
     for batch in image_path_batches:
-        use_time = time.time() - start_time
-        start_time = time.time()
-        # create a new thread to do inference
-        inferThread(yolov5_wrapper, batch).run()
-        print('input->{}, time->{:.2f}ms, saving into output/'.format(i, use_time * 1000))
-#     finally:
-#         # destroy the instance
-#         yolov5_wrapper.destroy()
+        inferThread_ = inferThread(yolov5_wrapper, batch)
+        inferThread_.run_()
