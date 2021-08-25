@@ -296,13 +296,27 @@ class YoLov5TRT(object):
         for _ in range(self.batch_size):
             yield np.zeros([self.input_h, self.input_w, 3], dtype=np.uint8)
 
-class warmUp(object):
+class warmUpThread(object):
     def __init__(self, yolov5_wrapper):
         self.yolov5_wrapper = yolov5_wrapper
 
     def run(self):
         batch_image_raw, use_time = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image_zeros())
         print('warm_up->{}, time->{:.2f}ms'.format(batch_image_raw[0].shape, use_time * 1000))
+
+class inferThread(object):
+    def __init__(self, yolov5_wrapper, image_path_batch):
+        self.yolov5_wrapper = yolov5_wrapper
+        self.image_path_batch = image_path_batch
+
+    def run(self):
+        batch_image_raw, use_time = self.yolov5_wrapper.infer(self.yolov5_wrapper.get_raw_image(self.image_path_batch))
+        for i, img_path in enumerate(self.image_path_batch):
+            parent, filename = os.path.split(img_path)
+            save_name = os.path.join('output', filename)
+            # Save image
+            cv2.imwrite(save_name, batch_image_raw[i])
+        print('input->{}, time->{:.2f}ms, saving into output/'.format(self.image_path_batch, use_time * 1000))
 
 if __name__ == "__main__":
     # load custom plugins
@@ -341,13 +355,18 @@ if __name__ == "__main__":
     image_dir = "samples/"
     image_path_batches = get_img_path_batches(yolov5_wrapper.batch_size, image_dir)
 
+    start_time = time.time()
+
     for i in range(10):
         # create a new thread to do warm_up
-        warmUp_ = warmUp(yolov5_wrapper)
+        warmUp = warmUpThread(yolov5_wrapper)
+        use_time = time.time() - start_time
+        start_time = time.time()
+        print('input->{}, time->{:.2f}ms, saving into output/'.format(i, use_time * 1000))
 
-        # for batch in image_path_batches:
-        #     # create a new thread to do inference
-        #     infer_ = inferThread(yolov5_wrapper, batch)
+    for batch in image_path_batches:
+        # create a new thread to do inference
+        infer = inferThread(yolov5_wrapper, batch)
 
 #     finally:
 #         # destroy the instance
