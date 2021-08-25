@@ -24,37 +24,6 @@ import pycuda.autoinit
 import json
 import sys
 
-TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-
-def parse_args():
-    """
-    Parse command line arguments
-    """
-    parser = argparse.ArgumentParser(description='BERT QA Inference')
-    parser.add_argument('-e', '--yolo_engine', dest='yolo_engine', default='build/yolov5s.wts',
-            help='Path to yolo TensorRT engine')
-    # parser.add_argument('-p', '--passage', nargs='*',
-    #         help='Text for paragraph/passage for BERT QA',
-    #         default='')
-    # parser.add_argument('-pf', '--passage-file',
-    #         help='File containing input passage',
-    #         default='')
-    # parser.add_argument('-q', '--question', nargs='*',
-    #         help='Text for query/question for BERT QA',
-    #         default='')
-    # parser.add_argument('-qf', '--question-file',
-    #         help='File containiner input question',
-    #         default='')
-    # parser.add_argument('-v', '--vocab-file',
-    #         help='Path to file containing entire understandable vocab',
-    #         default='./pre-trained_model/uncased_L-24_H-1024_A-16/vocab.txt')
-    # parser.add_argument('-s', '--sequence-length',
-    #         help='The sequence length to use. Defaults to 128',
-    #         default=128, type=int)
-    args, _ = parser.parse_known_args()
-    return args
-
-
 import glob
 import math
 import os
@@ -183,8 +152,24 @@ class LoadImages:  # for inference
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    
+    import ctypes
+    import os
+    import shutil
+    import random
+    import sys
+    import time
+    import cv2
+    import numpy as np
+    import pycuda.autoinit
+    import pycuda.driver as cuda
+    import tensorrt as trt
+    import torch
+    import torchvision
+
+    CONF_THRESH = 0.5
+    IOU_THRESHOLD = 0.4
+
+    # load custom plugins
     PLUGIN_LIBRARY = "build/libmyplugins.so"
     engine_file_path = "build/yolov5s.engine"
 
@@ -195,17 +180,34 @@ if __name__ == '__main__':
 
     ctypes.CDLL(PLUGIN_LIBRARY)
 
-    # Import necessary plugins for BERT TensorRT
-#     ctypes.CDLL("libnvinfer_plugin.so", mode=ctypes.RTLD_GLOBAL)
-#     ctypes.CDLL("/mnt/data/yu.huang/github.com/wang-xinyu/tensorrtx/yolov5/build/libyololayer.so", mode=ctypes.RTLD_GLOBAL)
-    # ctypes.CDLL("/mnt/data/yu.huang/github.com/wang-xinyu/tensorrtx/yolov5/build_2/libcommon.so", mode=ctypes.RTLD_GLOBAL)
+    # load coco labels
 
+    categories = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+            "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+            "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+            "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+            "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+            "hair drier", "toothbrush"]
 
+    if os.path.exists('output/'):
+        shutil.rmtree('output/')
+    os.makedirs('output/')
+    # a YoLov5TRT instance
+    # yolov5_wrapper = YoLov5TRT(engine_file_path)
 
-    # The first context created will use the 0th profile. A new context must be created
-    # for each additional profile needed. Here, we only use batch size 1, thus we only need the first profile.
-    with open(args.yolo_engine, 'rb') as f, trt.Runtime(TRT_LOGGER) as runtime, \
-        runtime.deserialize_cuda_engine(f.read()) as engine, engine.create_execution_context() as context:
+    # Create a Context on this device,
+    ctx = cuda.Device(0).make_context()
+    stream = cuda.Stream()
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+    runtime = trt.Runtime(TRT_LOGGER)
+
+    # Deserialize the engine from file
+    with open(engine_file_path, "rb") as f:
+        engine = runtime.deserialize_cuda_engine(f.read())
+        context = engine.create_execution_context()
 
         # We always use batch size 1.
         input_shape = (1, 3*416*352)
