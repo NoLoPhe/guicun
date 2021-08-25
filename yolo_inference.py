@@ -22,6 +22,7 @@ import tensorrt as trt
 import pycuda.driver as cuda
 import pycuda.autoinit
 import json
+import sys
 
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 
